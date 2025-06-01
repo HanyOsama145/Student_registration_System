@@ -6,7 +6,7 @@ import java.sql.DriverManager;
 import java.sql.SQLException;
 
 public class Database_connection {
-    private static final String URL = "jdbc:mysql://localhost:3306/student_registration_system";
+    private static final String URL = "jdbc:mysql://localhost:3306/hany_osama_table";
     private static final String USER = "root";
     private static final String PASSWORD = ""; // If you set a MySQL password, put it here
 

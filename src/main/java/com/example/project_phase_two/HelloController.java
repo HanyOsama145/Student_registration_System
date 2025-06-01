@@ -11,17 +11,16 @@ import javafx.scene.input.KeyEvent;
 import javafx.scene.layout.VBox;
 import javafx.stage.Modality;
 import javafx.stage.Stage;
+import javafx.application.Platform;
 
 import java.io.IOException;
 import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
-import javafx.application.Platform;
 
 public class HelloController {
-    @FXML
-    public Label welcome_label;
+
     @FXML
     private TextField ID_field;
     @FXML
@@ -29,30 +28,20 @@ public class HelloController {
     @FXML
     private Button Login_button;
 
-
-
     public void initialize() {
-        //Welcome_student.setVisible(false);
-
         Password_Field.setDisable(true);
-
-        // Enable password field when ID is typed
         ID_field.textProperty().addListener((observable, oldValue, newValue) -> {
             Password_Field.setDisable(newValue.trim().isEmpty());
         });
 
-        // Use Platform.runLater to wait for the scene to be ready
         Platform.runLater(() -> {
             Scene scene = ID_field.getScene();
             if (scene != null) {
-                // INSERT = Add Student
                 scene.addEventFilter(KeyEvent.KEY_PRESSED, event -> {
                     if (event.getCode() == KeyCode.INSERT) {
                         openAddStudentWindow();
                     }
                 });
-
-                // Ctrl+R = Registrar login
                 scene.addEventFilter(KeyEvent.KEY_PRESSED, event -> {
                     if ((event.isControlDown() || event.isMetaDown()) && event.getCode() == KeyCode.R) {
                         openRegistrarLoginWindow();
@@ -63,53 +52,73 @@ public class HelloController {
         });
     }
 
-
     private void openRegistrarLoginWindow() {
-        Stage popup = new Stage();
-        popup.initModality(Modality.APPLICATION_MODAL);
-        popup.setTitle("Registrar Login");
+        Stage loginPopup = new Stage(); // Renamed for clarity
+        loginPopup.initModality(Modality.APPLICATION_MODAL);
+        // loginPopup.initOwner(Login_button.getScene().getWindow()); // Optional: set owner
+        loginPopup.setTitle("Registrar Login");
 
         TextField idField = new TextField();
         idField.setPromptText("Enter Registrar ID");
-
         PasswordField passwordField = new PasswordField();
         passwordField.setPromptText("Enter Password");
+        Button doLoginButton = new Button("Login"); // Renamed for clarity
 
-        Button loginButton = new Button("Login");
+        Label errorLabel = new Label(); // For displaying login errors
+        errorLabel.setStyle("-fx-text-fill: red;");
 
-        loginButton.setOnAction(e -> {
+        doLoginButton.setOnAction(e -> {
+            errorLabel.setText(""); // Clear previous errors
             String enteredId = idField.getText();
             String enteredPassword = passwordField.getText();
 
             if (enteredId.isEmpty() || enteredPassword.isEmpty()) {
-                new Alert(Alert.AlertType.WARNING, "Please fill all fields.").show();
+                errorLabel.setText("Please fill all fields.");
                 return;
             }
 
-            Registrar registrar = Registrar.authenticate(enteredId, enteredPassword);
+            Registrar registrar = Registrar.authenticate(enteredId, enteredPassword); // Assuming this method exists
             if (registrar != null) {
-                new Alert(Alert.AlertType.INFORMATION, "Welcome " + registrar.getName() + "!").show();
-                popup.close();
+                // showAlert(Alert.AlertType.INFORMATION, "Login Successful", "Welcome " + registrar.getName() + "!");
+                loginPopup.close(); // Close the login popup
 
+                // ⭐ Open the Registrar Dashboard
+                try {
+                    FXMLLoader loader = new FXMLLoader(getClass().getResource("/com/example/project_phase_two/registrar_dashboard.fxml")); // Adjust path
+                    Parent registrarDashboardRoot = loader.load();
 
+                    // You can pass the registrar object to the dashboard controller if needed
+                    // RegistrarDashboardController dashboardController = loader.getController();
+                    // dashboardController.setRegistrar(registrar);
 
+                    Stage dashboardStage = new Stage();
+                    dashboardStage.setTitle("Registrar Dashboard - " + registrar.getName());
+                    dashboardStage.setScene(new Scene(registrarDashboardRoot));
+                    dashboardStage.show();
+
+                } catch (IOException ioException) {
+                    ioException.printStackTrace();
+                    showAlert(Alert.AlertType.ERROR, "Error", "Could not open registrar dashboard.");
+                }
             } else {
-                new Alert(Alert.AlertType.ERROR, "Invalid ID or password.").show();
+                errorLabel.setText("Invalid ID or password.");
             }
         });
 
-        VBox layout = new VBox(10, idField, passwordField, loginButton);
-        layout.setStyle("-fx-padding: 20;");
-        popup.setScene(new Scene(layout, 300, 180));
-        popup.showAndWait();
+        VBox layout = new VBox(10, new Label("Registrar ID:"), idField, new Label("Password:"), passwordField, doLoginButton, errorLabel);
+        layout.setStyle("-fx-padding: 20; -fx-alignment: center-left;");
+        loginPopup.setScene(new Scene(layout, 350, 250));
+        loginPopup.showAndWait();
     }
-
-
-
 
     public void Log_Action(ActionEvent actionEvent) {
         String id = ID_field.getText();
         String password = Password_Field.getText();
+
+        if (id.isEmpty() || password.isEmpty()) {
+            showAlert(Alert.AlertType.WARNING, "Validation Error", "ID and Password cannot be empty.");
+            return;
+        }
 
         try (Connection conn = Database_connection.getConnection()) {
             if (conn != null) {
@@ -121,89 +130,85 @@ public class HelloController {
                     ResultSet rs = stmt.executeQuery();
                     if (rs.next()) {
                         String studentName = rs.getString("name");
+                        int actualStudentId = Integer.parseInt(id); // Assuming ID from field is the correct integer ID
 
                         try {
                             FXMLLoader loader = new FXMLLoader(getClass().getResource("/com/example/project_phase_two/second_student.fxml"));
                             Parent root = loader.load();
 
-// ✅ Pass student name to second controller
                             SecondStudentController controller = loader.getController();
                             controller.setStudentName(studentName);
+                            controller.setCurrentStudentId(actualStudentId);
 
                             Stage stage = (Stage) Login_button.getScene().getWindow();
                             stage.setScene(new Scene(root));
-                            stage.setTitle("Student Page");
+                            stage.setTitle("Student Page - " + studentName);
                             stage.show();
 
-
-                        } catch (IOException e) {
-                            e.printStackTrace();
-                            showAlert(Alert.AlertType.ERROR, "Error loading scene: " + e.getMessage());
+                        } catch (IOException | NumberFormatException ex) { // Catch NumberFormatException too
+                            ex.printStackTrace();
+                            showAlert(Alert.AlertType.ERROR, "Application Error", "Error loading student page or processing ID: " + ex.getMessage());
                         }
-
-
                     } else {
-                        showAlert(Alert.AlertType.ERROR, "Invalid ID or password.");
+                        showAlert(Alert.AlertType.ERROR, "Login Failed", "Invalid ID or password.");
                     }
                 }
+            } else {
+                showAlert(Alert.AlertType.ERROR, "Database Error", "Failed to connect to the database.");
             }
         } catch (SQLException sqlException) {
-            showAlert(Alert.AlertType.ERROR, "Database error: " + sqlException.getMessage());
-        } catch (Exception e) {
-            showAlert(Alert.AlertType.ERROR, "Error: " + e.getMessage());
+            sqlException.printStackTrace();
+            showAlert(Alert.AlertType.ERROR, "Database Error", "Database operation failed: " + sqlException.getMessage());
+        } catch (Exception ex) { // General exception catch
+            ex.printStackTrace();
+            showAlert(Alert.AlertType.ERROR, "System Error", "An unexpected error occurred: " + ex.getMessage());
         }
     }
-
-    private void showAlert(Alert.AlertType type, String message) {
-        Alert alert = new Alert(type, message, ButtonType.OK);
+    // Overloaded showAlert for convenience
+    private void showAlert(Alert.AlertType type, String title, String message) {
+        Alert alert = new Alert(type);
+        alert.setTitle(title);
         alert.setHeaderText(null);
-        alert.setTitle("Error");
+        alert.setContentText(message);
         alert.showAndWait();
     }
-
-
+    // Original showAlert if needed for just message
+    private void showAlert(Alert.AlertType type, String message) {
+        showAlert(type, type.toString(), message); // Use AlertType as title if not provided
+    }
 
     private void openAddStudentWindow() {
+        // ... (your existing openAddStudentWindow method)
         Stage popup = new Stage();
         popup.initModality(Modality.APPLICATION_MODAL);
         popup.setTitle("Add New Student");
-
         TextField nameField = new TextField();
         nameField.setPromptText("Enter name");
-
         TextField idField = new TextField();
         idField.setPromptText("Enter ID");
-
         PasswordField passwordField = new PasswordField();
         passwordField.setPromptText("Enter password");
-
         Button saveButton = new Button("Save Student");
         saveButton.setOnAction(e -> {
             String name = nameField.getText();
-            String id = idField.getText();
-            String password = passwordField.getText();
-
-            if (name.isEmpty() || id.isEmpty() || password.isEmpty()) {
+            String newStudentId = idField.getText();
+            String newStudentPassword = passwordField.getText();
+            if (name.isEmpty() || newStudentId.isEmpty() || newStudentPassword.isEmpty()) {
                 new Alert(Alert.AlertType.WARNING, "Please fill all fields.").show();
                 return;
             }
-
-            // ✅ Create Student object and save using the object method
-            Student student = new Student(name, id, password);
+            Student student = new Student(name, newStudentId, newStudentPassword); // Assuming constructor
             try {
-                student.saveToDatabase();
+                student.saveToDatabase(); // Assuming method exists
                 new Alert(Alert.AlertType.INFORMATION, "Student added successfully!").show();
                 popup.close();
             } catch (Exception ex) {
                 new Alert(Alert.AlertType.ERROR, "Error saving student: " + ex.getMessage()).show();
             }
         });
-
         VBox layout = new VBox(10, nameField, idField, passwordField, saveButton);
         layout.setStyle("-fx-padding: 20;");
         popup.setScene(new Scene(layout, 300, 200));
         popup.showAndWait();
     }
-
-
 }
